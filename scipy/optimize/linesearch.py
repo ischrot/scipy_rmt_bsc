@@ -13,12 +13,14 @@ Functions
 """
 from warnings import warn
 
-from scipy.optimize import minpack2
+from scipy.optimize import minpack2, root_scalar # (IS)
+from scipy.linalg import norm #(IS)
+from copy import deepcopy #(IS)
 import numpy as np
 
 __all__ = ['LineSearchWarning', 'line_search_wolfe1', 'line_search_wolfe2',
            'scalar_search_wolfe1', 'scalar_search_wolfe2',
-           'line_search_armijo']
+           'line_search_armijo', 'scalar_search_rmt', 'scalar_search_bsc'] #(IS)
 
 class LineSearchWarning(RuntimeWarning):
     pass
@@ -900,3 +902,690 @@ def _nonmonotone_line_search_cheng(f, x_k, d, f_k, C, Q, eta,
     Q = Q_next
 
     return alpha, xp, fp, Fp, C, Q
+
+
+
+##(LS)
+
+def prepare_parameters(line_search, parameters, jacobian, dx):
+
+    #parameters['jacobian'] = jacobian  # (LS) already done when using prepare_parameters in solution 2. For 1 we would need it
+
+    if line_search in ('rmt', 'rmt_int'):
+        if 'rmt_eta' not in parameters:
+            warn("Necessary line search option 'rmt_eta' not specified."
+                 " Using default (1.0).", LineSearchWarning)
+            parameters['rmt_eta'] = 1.0
+
+        elif parameters['rmt_eta'] <= 0.0:
+        # elif parameters['rmt_eta'] >= 2.0 or parameters['rmt_eta'] <= 0.0:
+            warn("Line search option 'rmt_eta' is negative."
+                 " Using default (1.0) instead.", LineSearchWarning)
+            # warn("Line search option 'rmt_eta' exceeds its maximum (2.0) or is negative."
+            #      " Using default (1.0) instead.", LineSearchWarning)
+            parameters['rmt_eta'] = 1.0
+
+    if line_search in ('bsc', 'rmt'):
+        if 'min_search' not in parameters:
+            warn("Necessary line search option 'min_search' not specified."
+                 " Using default (False).", LineSearchWarning)
+            parameters['min_search'] = False
+        elif parameters['min_search'] not in (True, False):
+            warn("Necessary line search option 'min_search' not specified correctly."
+                 " Using default (False).", LineSearchWarning)
+            parameters['min_search'] = False
+
+        if 'nr_intervals' not in parameters:
+            if parameters['min_search']:
+                warn("Necessary line search option 'nr_intervals' not specified."
+                     " Using default (20).", LineSearchWarning)
+            parameters['nr_intervals'] = 20
+        elif type(parameters['nr_intervals']).__name__ != 'int' or parameters['nr_intervals'] < 1:
+            warn("Necessary line search option 'nr_intervals' not specified correctly."
+                 " Using default (20).", LineSearchWarning)
+            parameters['nr_intervals'] = 20
+
+    if line_search == 'rmt_int':
+        if 'adaptive_int' not in parameters:
+            warn("Necessary line search option 'adaptive_int' not specified."
+                 " Using default (False).", LineSearchWarning)
+            parameters['adaptive_int'] = False
+        elif parameters['adaptive_int'] not in (True, False):
+            warn("Necessary line search option 'adaptive_int' not specified correctly."
+                 " Using default (False).", LineSearchWarning)
+            parameters['adaptive_int'] = False
+        if 'second_order' not in parameters:
+            warn("Necessary line search option 'second_order' not specified."
+                 " Using default (False).", LineSearchWarning)
+            parameters['second_order'] = False
+        elif parameters['second_order'] not in (True, False):
+            warn("Necessary line search option 'second_order' not specified correctly."
+                 " Using default (False).", LineSearchWarning)
+            parameters['second_order'] = False
+        if 'test_step' not in parameters:
+            warn("Necessary line search option 'test_step' not specified."
+                 " Using default (0.1).", LineSearchWarning)
+            parameters['test_step'] = 0.1
+        elif parameters['test_step'] <= 0.0 or parameters['test_step'] >= 1.0:
+            warn("Necessary line search option 'test_step' not specified correctly."
+                 " Using default (0.1).", LineSearchWarning)
+            parameters['test_step'] = 0.1
+
+    if line_search == 'rmt':
+        if 'rmt_eta_upper' not in parameters:
+            warn("Necessary line search option 'rmt_eta_upper' not specified."
+                 " Using default (1.2).", LineSearchWarning)
+            parameters['rmt_eta_upper'] = 1.2
+
+        elif parameters['rmt_eta_upper'] <= parameters['rmt_eta']:
+            warn("rmt_eta_upper must be bigger than 'rmt_eta'. Using default (1.2 * rmt_eta)", LineSearchWarning)
+            parameters['rmt_eta_upper'] = 1.2 * parameters['rmt_eta']
+
+        # (IS): Disabled this check to test RMT with higher rmt_upper
+        # if parameters['rmt_eta_upper'] >= 2.0:
+        #     warn("rmt_eta * rmt_eta_upper exceeds its maximum (2.0)."
+        #          " Using default (rmt_eta=1.0, rmt_eta_upper=1.2, "
+        #          "rmt_eta_lower=0.8)", LineSearchWarning)
+        #     parameters['rmt_eta_upper'] = 1.2
+        #     parameters['rmt_eta'] = 1.0
+        #     parameters['rmt_eta_lower'] = 0.8
+
+        if 'rmt_eta_lower' not in parameters:
+            warn("Necessary line search option 'rmt_eta_lower' not specified."
+                 " Using default (0.8 * rmt_eta).", LineSearchWarning)
+            parameters['rmt_eta_lower'] = 0.8 * parameters['rmt_eta']
+
+        elif parameters['rmt_eta_lower'] < 0.0 or parameters['rmt_eta_lower'] >= parameters['rmt_eta']:
+            warn("rmt_eta_lower is negative or not smaller than 'rmt_eta'."
+                 " Using default (0.8 * rmt_eta)", LineSearchWarning)
+            parameters['rmt_eta_lower'] = 0.8 * parameters['rmt_eta']
+
+        # parameters['rmt_eta_upper'] *= parameters['rmt_eta']
+        # parameters['rmt_eta_lower'] *= parameters['rmt_eta']
+
+        if 'prediction' not in parameters:
+            parameters['prediction'] = True
+
+        if 'amin' not in parameters or parameters['amin'] < 0.0 \
+                or parameters['amin'] > 1.0:
+            warn("Necessary line search option 'amin' not (correctly) specified."
+                 " Using default (1e-8).", LineSearchWarning)
+            parameters['amin'] = 1e-8
+
+        if 'astall' not in parameters or parameters['astall'] < 0.0 \
+                or parameters['astall'] > 1.0:
+            warn("Necessary line search option 'astall' not (correctly) specified."
+                 " Using default (1e-10).", LineSearchWarning)
+            parameters['astall'] = 1e-10
+
+        if 'back_projection' not in parameters:
+            parameters['back_projection'] = False
+
+        if 'ideal_projection' not in parameters:
+            parameters['ideal_projection'] = False
+
+        if parameters['ideal_projection'] and not parameters['back_projection']:
+            parameters['back_projection'] = True
+
+        if 'omega_mod' not in parameters:
+            warn("Necessary line search option 'omega_mod' not specified."
+                 " Using default (False).", LineSearchWarning)
+            parameters['omega_mod'] = False
+        elif parameters['omega_mod'] not in (True, False):
+            warn("Necessary line search option 'omega_mod' not specified correctly."
+                 " Using default (False).", LineSearchWarning)
+            parameters['omega_mod'] = False
+
+    elif line_search == 'bsc':
+        if 'H' not in parameters and 'H_rel' not in parameters:
+            warn("Necessary line search option 'H' or 'H_rel' not specified."
+                 " Using default (H_rel = 1.0).", LineSearchWarning)
+            parameters['H_rel'] = 1.0
+            parameters['H'] = parameters['H_rel'] * max(1.0, norm(dx))
+        elif 'H' in parameters and 'H_rel' in parameters:
+            if parameters['H'] > 0.0 and parameters['H_rel'] > 0.0:
+                warn("Both line search options 'H' or 'H_rel' specified."
+                     " Using 'H_rel' by default.", LineSearchWarning)
+                parameters['H'] = parameters['H_rel'] * max(1.0, norm(dx))
+            elif parameters['H'] <= 0.0 and parameters['H_rel'] <= 0.0:
+                warn("Both line search options 'H' or 'H_rel' are not specified (correctly)."
+                     " Using default (H_rel=1.0).", LineSearchWarning)
+                parameters['H_rel'] = 1.0
+                parameters['H'] = parameters['H_rel'] * max(1.0, norm(dx))
+            elif parameters['H_rel'] > 0.0:
+                warn("Line search option 'H' is negative."
+                     " Using correctly given 'H_rel'.", LineSearchWarning)
+                parameters['H'] = parameters['H_rel'] * max(1.0, norm(dx))
+        elif 'H' in parameters:
+            parameters['H_rel'] = None
+            if parameters['H'] <= 0.0:
+                warn("Line search option 'H' is negative."
+                     " Using default (2.0).", LineSearchWarning)
+                parameters['H'] = 2.0
+        elif 'H_rel' in parameters:
+            if parameters['H_rel'] <= 0.0:
+                warn("Line search option 'H_rel' is negative."
+                     " Using default (1.0).", LineSearchWarning)
+                parameters['H_rel'] = 1.0
+            parameters['H'] = parameters['H_rel'] * max(1.0, norm(dx))
+
+        if 'H_lower' not in parameters:
+            warn("Necessary line search option 'H_lower' not specified."
+                 " Using default (H*min(0.1, H)).", LineSearchWarning)
+            parameters['H_lower'] = parameters['H'] * min(0.1, parameters['H'])
+        elif callable(parameters['H_lower']):
+            parameters['H_lower'] = parameters['H_lower'](parameters['H'])
+
+        if parameters['H_lower'] < 0.0 or parameters['H_lower'] >= parameters['H']:
+            warn("Line search option 'H_lower' is negative or bigger than 'H'."
+                 " Using default (H*min(0.1, H)).", LineSearchWarning)
+            parameters['H_lower'] = parameters['H'] * min(0.1, parameters['H'])
+
+        if 'H_upper' not in parameters:
+            warn("Necessary line search option 'H_upper' not specified."
+                 " Using default (2*H).", LineSearchWarning)
+            parameters['H_upper'] = 2.0 * parameters['H']
+        elif callable(parameters['H_upper']):
+            parameters['H_upper'] = parameters['H_upper'](parameters['H'])
+        if parameters['H_upper'] <= parameters['H']:
+            warn("Line search option 'H_upper' is smaller than 'H'."
+                 " Using default (2*H).", LineSearchWarning)
+            parameters['H_upper'] = 2.0 * parameters['H']
+
+        if 'smooth_factor' not in parameters or parameters['smooth_factor'] < 0.0 \
+                or parameters['smooth_factor'] > 1.0:
+            warn("Necessary line search option 'smooth_factor' not (correctly) specified."
+                 " Using default (0.8).", LineSearchWarning)
+            parameters['smooth_factor'] = 0.8
+
+        if 'amin' not in parameters or parameters['amin'] < 0.0 \
+                or parameters['amin'] > 1.0:
+            warn("Necessary line search option 'amin' not (correctly) specified."
+                 " Using default (1e-8).", LineSearchWarning)
+            parameters['amin'] = 1e-8
+
+        # if 'afull' not in parameters or parameters['afull'] <= 0.0 \
+        #         or parameters['afull'] > 1.0:
+        #     warn("Necessary line search option 'afull' not (correctly) specified."
+        #          " Using default (0.999).", LineSearchWarning)
+        #     parameters['afull'] = 0.999
+
+        if 'astall' not in parameters or parameters['astall'] < 0.0 \
+                or parameters['astall'] > 1.0:
+            warn("Necessary line search option 'astall' not (correctly) specified."
+                 " Using default (1e-10).", LineSearchWarning)
+            parameters['astall'] = 1e-10
+
+    if 'analysis' in parameters:
+        if parameters['analysis']:
+            parameters['step_sizes'] = []  # store step sizes
+            parameters['dx'] = []  # store step directions as originally calculated
+            parameters['x'] = []  # iterates
+            if line_search in ('rmt', 'bsc', 'rmt_int'):
+                parameters['F_evals'] = 1 # when this fct is called, we already evaluated Fx and calculated dx, but for the latter we cached Fx
+                parameters['J_evals'] = 1 # see comment above
+                parameters['J_updates'] = 1 # see comment above
+            if line_search == 'rmt' and parameters['back_projection']:
+                parameters['dx_project'] = [] # store finally taken step directions as given by the back projection
+                parameters['ss_project'] = [] # original step size used internally in the projection
+    else:
+        parameters['analysis'] = False
+### (LS)
+
+### (IS)
+#------------------------------------------------------------------------------
+# Restrictive monotonicity test based line search
+#------------------------------------------------------------------------------
+def scalar_search_rmt(func, x, dx, parameters = None):
+    """
+    Restrictive monotonicity test based line search as described in [1]_
+
+    Parameters
+    ----------
+    func : callable
+        Function returning J(x_k)^-1 F(x_k + alpha dx)
+    x : ndarray
+        Current iterate
+    dx : ndarray
+        Search direction
+    Fx : ndarray:
+        F(x_k)
+    parameters : dict
+        Can contain the following parameters:
+        i)      rmt_eta : float
+                    necessary tuning parameter (default 0.8)
+        ii)     old_omega : float
+                    Final curvature estimate of the previous iteration
+        iii)    pred_init_frame : ndarray
+                    If a prediction for the step size is made, this defines the brackets for the
+                    root finding procedure, which then is [left_factor * prediction, right_factor * prediction]
+                    (default: [0.9, 1.1])
+        iv)     pred_frame_growth : float
+                    Factor for the increase of the bracket size for the prediction of the step size, if the
+                    previous bracket did not contain a solution (default: 1.2)
+        v)      maxiter : int
+                    Maximum number of calls to scipys scalar rootfinding procedure (default: 10)
+        vi)     prediction : bool
+                    Should the prediction for the step size be made? (default: True)
+        vii)    amin : float
+                    Minimum step size (default: 1e-6)
+
+    Returns
+    -------
+    alpha : float
+        Step length
+
+    References
+    ----------
+    [1] Bock H.G., Kostina E., Schlöder J.P. (2000) "On the Role of Natural
+        Level Functions to Achieve Global Convergence for Damped Newton
+        Methods." In: Powell M.J.D., Scholtes S. (eds) System Modelling and
+        Optimization. CSMO 1999. IFIP — The International Federation for
+        Information Processing, vol 46. Springer, Boston, MA
+    """
+
+    # =================================================================
+    ###################################################################
+    # read and prepare parameters and variables:
+    ###################################################################
+    # =================================================================
+    
+    #(LS)
+    if parameters == None:
+        print("Missing jacobian")
+    prepare_parameters('rmt',parameters,parameters['jacobian'],dx)
+    #(LS)
+    rmt_eta = parameters['rmt_eta']
+    rmt_eta_upper = parameters['rmt_eta_upper']
+    rmt_eta_lower = parameters['rmt_eta_lower']
+
+    amin = parameters['amin']
+    astall = parameters['astall']
+
+    prediction = parameters['prediction']
+
+    # omega_F will store omega_F to make a prediction possible in the next iteration
+    omega_F = [-1.0]
+    dxbar_cache = [None]
+    Fx_cache = [None]
+
+    #flag whether t_dx_omega was already computed for one of the boundaries of the bracket
+    predicted_t_dx_omega = [False]
+
+    jacobian = parameters['jacobian']
+    jac_tol = parameters['jac_tol']
+
+
+    # =================================================================
+    ###################################################################
+    # define auxiliary functions:
+    ###################################################################
+    # =================================================================
+
+    ###################################################################
+    # function to calculate t_dx_omega:
+    ###################################################################
+    def eval_t_dx_omega(alpha, omega_F, dxbar_cache, Fx_cache):
+        Fx_new = func(x + alpha * dx)
+        if np.isnan(Fx_new).any() or np.isinf(Fx_new).any():
+            return rmt_eta_upper + 1.0
+        else:
+            dxbar = jacobian.solve(
+                Fx_new,
+                tol=jac_tol
+            )
+
+            dx_diff = dxbar + (1 - alpha) * dx # note that dx = - J(x_k)^(-1)F(x_k)
+
+            nominator = 2 * norm(dx_diff)
+            denominator = alpha * norm(dx)
+
+            Fx_cache[0] = Fx_new
+            if prediction:
+                omega_F[0] = nominator / (denominator**2) #store omega_F for next iteration
+            if back_projection and not ideal_projection:
+                dxbar_cache[0] = dxbar
+
+            return nominator / denominator
+
+    ###################################################################
+    # function checking whether the RMT is satisfied:
+    ###################################################################
+    # to make it callable by root_scalar, we construct it such that
+    # i) for all step sizes satisfying
+    #   eta_lower <= t_k omega_F norm(dx) <= eta_upper
+    #   we return 0.0, which aborts the root finding procedure and classifies
+    #   the step size as feasible
+    # ii) if the left inequality is violated, we return -1.0
+    # iii) if the right inequality is violated, we return 1.0
+    # This is necessary to be able to have different signs for the left and right end
+    # of the interval in the bisection procedure.
+    def rmt_fct(alpha, omega_F, predicted_t_dx_omega, dxbar_cache, Fx_cache, t_dx_omega=None):
+        # although we call a root finding procedure, we only want to achieve
+        # rmt_eta_upper >= t dx omega >= rmt_eta_lower. Hence, we set a negative result to 0.0 to end the root
+        # finding procedure.
+        # to avoid that left and right interval boundary have the same sign, we
+        # return -1 for too small values.
+        if alpha < amin:
+            if predicted_t_dx_omega[0]:
+                predicted_t_dx_omega[0] = False
+            return -1.0
+
+        else:
+            #if we already calculated t_dx_omega, reuse it
+            if not predicted_t_dx_omega[0]:
+                if t_dx_omega is None:
+                    t_dx_omega = eval_t_dx_omega(alpha, omega_F, dxbar_cache, Fx_cache)
+            else:
+                t_dx_omega = t_dx_omega_pred
+                predicted_t_dx_omega[0] = False #for the next alpha, we have to
+                # calculate it here again
+
+            # check the two inequalities:
+            if (rmt_eta_lower <= t_dx_omega and t_dx_omega <= rmt_eta_upper)\
+                    or (rmt_eta_lower > t_dx_omega and alpha == 1.0):
+                return 0.0
+            elif rmt_eta_lower > t_dx_omega: #i.e. our step size is too small
+                return -1.0
+            elif t_dx_omega > rmt_eta_upper: #i.e. our step size is too big
+                return 1.0
+
+
+    # =================================================================
+    ###################################################################
+    # perform actual line search:
+    ###################################################################
+    # =================================================================
+
+
+
+    ###################################################################
+    # Define bracket for brentq rootfinding
+    ###################################################################
+
+    ###################################################################
+    # possibly make a prediction:
+    ###################################################################
+    if 'old_omega' in parameters:
+        old_omega = parameters['old_omega']
+        alpha = min(
+            1.0,
+            rmt_eta / (old_omega * norm(dx))
+        )
+    else:
+        # this is the case in the first iteration and if prediction == False
+        alpha = 1.0
+
+    # check whether the predicted step size is feasible, too big or too small
+    # calculate t_dx_omega for the predicted step, which might be the full step:
+    t_dx_omega_pred = eval_t_dx_omega(alpha, omega_F, dxbar_cache, Fx_cache)
+    feas_flag = rmt_fct(alpha, omega_F, predicted_t_dx_omega, dxbar_cache, Fx_cache,
+                        t_dx_omega=t_dx_omega_pred)
+
+    predicted_t_dx_omega[0] = True # as we always start the bracket with the predicted alpha, we can reuse the values
+    if feas_flag == 0:
+        # prediction is feasible -> return
+        if prediction:
+            parameters['old_omega'] = omega_F[0]
+        return alpha, dxbar_cache[0], Fx_cache[0]
+
+    elif feas_flag == -1:
+        # try to increase the predicted step size
+        bracket = [alpha, 1.0]
+
+    else: #feas_flag == 1:
+        # try to reduce the predicted step size
+        bracket = [alpha, 0.0]
+
+    ###################################################################
+    # call brentq procedure:
+    ###################################################################
+    result = root_scalar(rmt_fct, args=(omega_F, predicted_t_dx_omega, dxbar_cache, Fx_cache),
+                         method='brentq', bracket=bracket, xtol=astall)
+
+    ###################################################################
+    # process result:
+    ###################################################################
+    if result.converged and result.root >= amin:
+        if prediction:
+            parameters['old_omega'] = omega_F[0]
+
+        return result.root, dxbar_cache[0], Fx_cache[0]
+    else:
+        warn("\nThe restrictive monotonicity test could not determine a"
+             " suitable step size!\n"
+             "Take a full step instead, skip back projection (if set) and hope for the best.",
+             LineSearchWarning)
+        return None, dxbar_cache[0], Fx_cache[0]
+### (IS)
+
+
+#### (IS)
+#------------------------------------------------------------------------------
+# Backward step control based line search
+#------------------------------------------------------------------------------
+def scalar_search_bsc(func, x, dx, Fx, parameters = None):
+    """
+    Restrictive monotonicity test based line search as described in [1]_
+
+    Parameters
+    ----------
+    func : callable
+        Function returning J(x_k)^-1 F(x_k + alpha dx)
+    x : ndarray
+        Current iterate
+    dx : ndarray
+        Search direction
+    Fx : ndarray:
+        F(x_k)
+    parameters : dict
+        Can contain the following parameters:
+        i)      rmt_eta : float
+                    necessary tuning parameter (default 0.8)
+        ii)     old_omega : float
+                    Final curvature estimate of the previous iteration
+        iii)    pred_init_frame : ndarray
+                    If a prediction for the step size is made, this defines the brackets for the
+                    root finding procedure, which then is [left_factor * prediction, right_factor * prediction]
+                    (default: [0.9, 1.1])
+        iv)     pred_frame_growth : float
+                    Factor for the increase of the bracket size for the prediction of the step size, if the
+                    previous bracket did not contain a solution (default: 1.2)
+        v)      maxiter : int
+                    Maximum number of calls to scipys scalar rootfinding procedure (default: 10)
+        vi)     prediction : bool
+                    Should the prediction for the step size be made? (default: True)
+        vii)    amin : float
+                    Minimum step size (default: 1e-6)
+
+    Returns
+    -------
+    alpha : float
+        Step length
+
+    References
+    ----------
+    [1] Bock H.G., Kostina E., Schlöder J.P. (2000) "On the Role of Natural
+        Level Functions to Achieve Global Convergence for Damped Newton
+        Methods." In: Powell M.J.D., Scholtes S. (eds) System Modelling and
+        Optimization. CSMO 1999. IFIP — The International Federation for
+        Information Processing, vol 46. Springer, Boston, MA
+    """
+
+    #(LS)
+    if parameters == None:
+        print("Missing jacobian")
+    prepare_parameters('bsc',parameters,parameters['jacobian'],dx)
+    #(LS)
+
+    # =================================================================
+    ###################################################################
+    # read and prepare parameters and variables:
+    ###################################################################
+    # =================================================================
+    H = parameters['H']
+    H_lower = parameters['H_lower']
+    H_upper = parameters['H_upper']
+    smooth = parameters['smooth_factor']
+    amin = parameters['amin']
+    astall = parameters['astall']
+
+    # H_prime will store H_prime to make a prediction possible in the next iteration
+    H_prime_container = [-1.0]
+    Fx_cache = [None]
+    #flag whether t_dx_omega was already computed for one of the boundaries of the bracket
+    predicted_H_prime = [False]
+
+    jacobian = parameters['jacobian']
+    #unfortunately, we have to deepcopy the Jacobian as we have to reset the Jacobian after updating it for
+    #intermediate step sizes and as some update schemes might not lead to the original Jacobian if we first
+    #use .update(x_new) and then .update(x_old).
+    old_jacobian = deepcopy(jacobian)
+    jac_tol = parameters['jac_tol']
+
+
+    # =================================================================
+    ###################################################################
+    # define auxiliary functions:
+    ###################################################################
+    # =================================================================
+
+    ###################################################################
+    # function to calculate H_prime:
+    ###################################################################
+    def eval_H_prime(alpha, H_prime_container, Fx_cache):
+        x_new = x + alpha * dx
+        Fx_new = func(x_new)
+        jacobian = deepcopy(old_jacobian)
+        jacobian.update(
+            x_new.copy(),
+            Fx_new
+        )
+        dx_next_it = -jacobian.solve(
+            Fx_new,
+            tol=jac_tol
+        )
+        parameters['dx_next'] = dx_next_it
+        Fx_cache[0] = Fx_new
+        dx_diff = dx_next_it - dx
+        H_prime = alpha * norm(dx_diff)
+
+        H_prime_container[0] = H_prime #store H_prime for next iteration
+
+        return H_prime
+
+    ###################################################################
+    # function checking whether the BSC test is satisfied:
+    ###################################################################
+    # to make it callable by root_scalar, we construct it such that
+    # i) for all step sizes satisfying
+    #   H_lower <= H_prime <= H_upper
+    #   we return 0.0, which aborts the root finding procedure and classifies
+    #   the step size as feasible
+    # ii) if the left inequality is violated, we return -1.0
+    # iii) if the right inequality is violated, we return 1.0
+    # This is necessary to be able to have different signs for the left and right end
+    # of the interval in the bisection procedure.
+    def bsc_fct(alpha, H_prime_container, predicted_H_prime, Fx_cache, H_prime=None):
+        # although we call a root finding procedure, we only want to achieve
+        # H_lower <= H_prime <= H_upper. Hence, we set a negative result to 0.0 to end the root
+        # finding procedure.
+        # to avoid that left and right interval boundary have the same sign, we
+        # return -1 for too small values.
+        if alpha < amin:
+            if predicted_H_prime[0]:
+                predicted_H_prime[0] = False
+            return -1
+
+        else:
+            #if we already calculated t_dx_omega, reuse it
+            if not predicted_H_prime[0]:
+                if H_prime is None:
+                    H_prime = eval_H_prime(alpha, H_prime_container, Fx_cache)
+            else:
+                H_prime = H_prime_container[0]
+                predicted_H_prime[0] = False #for the next alpha, we have to
+                # calculate it here again
+
+            # check the two inequalities:
+            if (H_lower <= H_prime and H_prime <= H_upper)\
+                    or (H_lower > H_prime and alpha >= 1.0):
+                return 0.0
+            elif H_lower > H_prime and alpha < 1.0: #i.e. our step size is too small
+                return -1.0
+            elif H_prime > H_upper: #i.e. our step size is too big
+                return 1.0
+
+
+    # =================================================================
+    ###################################################################
+    # perform actual line search:
+    ###################################################################
+    # =================================================================
+
+    ###################################################################
+    # possibly make a prediction:
+    ###################################################################
+    if 'old_H_prime' in parameters and 'old_step_size' in parameters:
+        old_H_prime = parameters['old_H_prime']
+        old_step_size = parameters['old_step_size']
+        alpha = min(
+            1.0,
+            old_step_size * (smooth + (1-smooth)*H/old_H_prime)
+        )
+    else:
+        # this is the case in the first iteration and if prediction == False
+        alpha = 1.0
+
+    ###################################################################
+    # check prediction and define bracket for brentq rootfinding:
+    ###################################################################
+    # check whether the step size is feasible, too big or too small
+    # calculate t_dx_omega for the predicted step, which might be the full step:
+    H_prime = eval_H_prime(alpha, H_prime_container, Fx_cache)
+    feas_flag = bsc_fct(alpha, H_prime_container, predicted_H_prime, Fx_cache,
+                        H_prime=H_prime)
+    predicted_H_prime[0] = True
+
+    if feas_flag == 0:
+        # prediction is feasible
+        parameters['old_H_prime'] = H_prime_container[0]
+        parameters['old_step_size'] = alpha
+
+        return alpha, Fx_cache[0]
+
+    elif feas_flag == -1:
+        # try to increase the predicted step size
+        bracket = [alpha, 1.0]
+
+    else: #feas_flag == 1:
+        # try to reduce the predicted step size
+        bracket = [alpha, 0.0]
+
+    ###################################################################
+    # call brentq procedure:
+    ###################################################################
+    result = root_scalar(bsc_fct, args=(H_prime_container, predicted_H_prime, Fx_cache),
+                         method='brentq', bracket=bracket, xtol=astall)
+
+    ###################################################################
+    # process result:
+    ###################################################################
+    if result.converged and result.root >= amin:
+        alpha = result.root
+        parameters['old_H_prime'] = H_prime_container[0]
+        parameters['old_step_size'] = alpha
+
+        return alpha, Fx_cache[0]
+    else:
+        warn("\nThe backward step control could not determine a"
+             " suitable step size!\n"
+             "Take a full step instead and hope for the best.", LineSearchWarning)
+
+        parameters['old_H_prime'] = H_prime_container[0]
+        parameters['old_step_size'] = 1.0
+
+        return None, Fx_cache[0]
+
+
+### (IS)

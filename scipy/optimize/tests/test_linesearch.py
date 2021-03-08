@@ -33,6 +33,16 @@ def assert_armijo(s, phi, c1=1e-4, err_msg=""):
     msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (s, phi0, phi1, err_msg)
     assert_(phi1 <= (1 - c1*s)*phi0, msg)
 
+###(LS)###
+def assert_rmt(s, phi, c1=1e-4, err_msg=""):
+    """
+    Check that RMT condition applies
+    """
+    phi1 = phi(s)
+    phi0 = phi(0)
+    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (s, phi0, phi1, err_msg)
+    assert_(phi1 <= (1 - c1*s)*phi0, msg)
+###(LS)###
 
 def assert_line_wolfe(x, p, s, f, fprime, **kw):
     assert_wolfe(s, phi=lambda sp: f(x + p*sp),
@@ -189,6 +199,14 @@ class TestLineSearch(object):
             assert_fp_equal(phi1, phi(s), name)
             assert_armijo(s, phi, err_msg="%s %g" % (name, old_phi0))
 
+    ###(LS)###
+    def test_scalar_search_rmt(self):
+        for name, phi, derphi, old_phi0 in self.scalar_iter():
+            s, phi1 = ls.scalar_search_rmt(phi, phi(0), derphi(0))
+            assert_fp_equal(phi1, phi(s), name)
+            assert_armijo(s, phi, err_msg="%s %g" % (name, old_phi0))
+    ###(LS)###
+    
     # -- Generic line searches
 
     def test_line_search_wolfe1(self):

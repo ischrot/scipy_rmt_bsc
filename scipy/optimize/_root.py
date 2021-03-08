@@ -262,7 +262,7 @@ def _root_nonlin_solve(fun, x0, args=(), jac=None,
                        nit=None, disp=False, maxiter=None,
                        ftol=None, fatol=None, xtol=None, xatol=None,
                        tol_norm=None, line_search='armijo', jac_options=None,
-                       **unknown_options):
+                       parameters=None, **unknown_options): # (IS)
     _check_unknown_options(unknown_options)
 
     f_tol = fatol
@@ -297,9 +297,9 @@ def _root_nonlin_solve(fun, x0, args=(), jac=None,
                                   maxiter=maxiter, f_tol=f_tol,
                                   f_rtol=f_rtol, x_tol=x_tol,
                                   x_rtol=x_rtol, tol_norm=tol_norm,
-                                  line_search=line_search,
+                                  line_search=line_search, parameters=parameters,
                                   callback=_callback, full_output=True,
-                                  raise_exception=False)
+                                  raise_exception=False) #(IS)
     sol = OptimizeResult(x=x)
     sol.update(info)
     return sol

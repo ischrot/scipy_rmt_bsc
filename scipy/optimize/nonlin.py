@@ -116,7 +116,8 @@ import scipy.sparse
 from scipy.linalg import get_blas_funcs
 import inspect
 from scipy._lib._util import getfullargspec_no_self as _getfullargspec
-from .linesearch import scalar_search_wolfe1, scalar_search_armijo
+from .linesearch import scalar_search_wolfe1, scalar_search_armijo, scalar_search_rmt, scalar_search_bsc, LineSearchWarning # (IS)
+from warnings import warn # (IS)
 
 
 __all__ = [
@@ -220,8 +221,8 @@ def _set_doc(obj):
 
 def nonlin_solve(F, x0, jacobian='krylov', iter=None, verbose=False,
                  maxiter=None, f_tol=None, f_rtol=None, x_tol=None, x_rtol=None,
-                 tol_norm=None, line_search='armijo', callback=None,
-                 full_output=False, raise_exception=True):
+                 tol_norm=None, line_search='armijo', parameters = {}, callback=None,
+                 full_output=False, raise_exception=True): # (IS)
     """
     Find a root of a function, in a way suitable for large-scale problems.
 
@@ -279,6 +280,11 @@ def nonlin_solve(F, x0, jacobian='krylov', iter=None, verbose=False,
     jacobian = asjacobian(jacobian)
     jacobian.setup(x.copy(), Fx, func)
 
+    ### (LS)
+    if parameters == None:
+        parameters = {}
+    ### (LS)
+
     if maxiter is None:
         if iter is not None:
             maxiter = iter + 1
@@ -290,14 +296,28 @@ def nonlin_solve(F, x0, jacobian='krylov', iter=None, verbose=False,
     elif line_search is False:
         line_search = None
 
-    if line_search not in (None, 'armijo', 'wolfe'):
+    if line_search not in (None, 'armijo', 'wolfe', 'bsc', 'rmt'): #(IS)
         raise ValueError("Invalid line search")
+
+    if line_search in ('rmt','bsc'): #(LS)
+        parameters['jacobian']=jacobian         #(LS)
+
 
     # Solver tolerance selection
     gamma = 0.9
     eta_max = 0.9999
     eta_treshold = 0.1
     eta = 1e-3
+
+    #### (IS)
+    if 'amin' in parameters:
+        smin = parameters['amin']
+    elif 'smin' in parameters:
+        smin = parameters['smin']
+    else:
+        smin = 1e-2  # which is the default for _nonlin_line_search
+    ### (IS)
+
 
     for n in range(maxiter):
         status = condition.check(Fx, x, dx)
@@ -315,6 +335,7 @@ def nonlin_solve(F, x0, jacobian='krylov', iter=None, verbose=False,
 
         # Line search, or Newton step
         if line_search:
+            parameters['jac_tol'] = tol #update tol #(IS)
             s, x, Fx, Fx_norm_new = _nonlin_line_search(func, x, Fx, dx,
                                                         line_search)
         else:
@@ -368,11 +389,12 @@ _set_doc(nonlin_solve)
 
 
 def _nonlin_line_search(func, x, Fx, dx, search_type='armijo', rdiff=1e-8,
-                        smin=1e-2):
+                        smin=1e-2, options=None): # (IS)
     tmp_s = [0]
     tmp_Fx = [Fx]
     tmp_phi = [norm(Fx)**2]
     s_norm = norm(x) / norm(dx)
+    Fx_new = None # (IS) to avoid reference before assignment if RMT is not used
 
     def phi(s, store=True):
         if s == tmp_s[0]:
@@ -396,7 +418,14 @@ def _nonlin_line_search(func, x, Fx, dx, search_type='armijo', rdiff=1e-8,
     elif search_type == 'armijo':
         s, phi1 = scalar_search_armijo(phi, tmp_phi[0], -tmp_phi[0],
                                        amin=smin)
+    #### (IS)
+    elif search_type == 'rmt':
+        s, dxbar, Fx_new = scalar_search_rmt(func, x, dx, parameters=options)
 
+    elif search_type == 'bsc':
+        s, Fx_new = scalar_search_bsc(func, x, dx, Fx, parameters=options)
+    #### (IS)
+    
     if s is None:
         # XXX: No suitable step length found. Take the full Newton step,
         #      and hope for the best.

@@ -1,0 +1,34 @@
+Changes done by Ihno Schrot (IS) in order to implement the Exact Newton Method as part of scipy.optimize.root, and the Backward Step Control and the Restrictive Monotonicity Test as Line Search methods.
+
+File                            |   Approx. Line        | Description of changes
+=============================================================================================================================================================================
+scipy_MT/optimize/_root.py      | 164                   | Included 'exact' in tuple for the case that fun also returns the jacobian
+scipy_MT/optimize/_root.py      | 179                   | Included 'exact' in tuple for the case that the default tolerances are set if tol is not given
+scipy_MT/optimize/_root.py      | 194                   | added 'exact' to tuple of methods
+scipy_MT/optimize/_root.py      | 195 - 200             | Added if-condition to disable warning about unused jacobian for exact method and added a check whether a jacobian is given
+scipy_MT/optimize/_root.py      | 264 - 269             | Added 'line_search_options' to arguments to pass options to ls methods
+scipy_MT/optimize/_root.py      | 280 - 287             | created a wrapper to include jac in jacobian dict
+scipy_MT/optimize/_root.py      | 296                   | Included 'exact' in jacobian dict
+scipy_MT/optimize/_root.py      | 309 - 316             | Added 'line_search_options' to arguments to pass options to ls methods
+
+scipy_MT/optimize/nonlin.py     | 122 - 124             | Added import of 'scalar_search_rmt', LineSearchWarning and warn from warnings
+scipy_MT/optimize/nonlin.py     | 164 - 305             | Added function preparing line_search_options for RMT and BSC
+scipy_MT/optimize/nonlin.py     | 368 - 371             | Added argument 'line_search_options' to pass options to bsc and rmt ls methods
+scipy_MT/optimize/nonlin.py     | 440                   | Added 'bsc' and 'rmt' as new line search keywords
+scipy_MT/optimize/nonlin.py     | 463 - 469             | Read amin or smin (which wasn't the case before)
+scipy_MT/optimize/nonlin.py     | 465 - 474             | Added analysis things and the possibility to use the cached dx
+scipy_MT/optimize/nonlin.py     | 470 - 478             | Prepare Jacobian and parameters
+scipy_MT/optimize/nonlin.py     | 486 - 489             | Added analysis things
+scipy_MT/optimize/nonlin.py     | 531 - 532             | Modified definition of _nonlin_line_search to pass ls options including the Jacobian
+scipy_MT/optimize/nonlin.py     | 554                   | Defined Fx_new to avoid reference before assignment if RMT is not used
+scipy_MT/optimize/nonlin.py     | 560 - 599             | Added call to scalar_search_rmt and needed preparations and back projection
+scipy_MT/optimize/nonlin.py     | 632 - 636             | Added Analysis Things
+scipy_MT/optimize/nonlin.py     | 506 - 508             | Added Analysis Things
+
+scipy_MT/optimize/linesearch.py | 18                    | Imported scipy.optimize.root_scalar
+scipy_MT/optimize/linesearch.py | 21                    | Imported norm from scipy.linalg
+scipy_MT/optimize/linesearch.py | 22                    | Imported deepcopy from copy
+scipy_MT/optimize/linesearch.py | 25                    | Added 'scalar_search_rmt' to __all__
+scipy_MT/optimize/linesearch.py | 881 - 1123            | Implementation of scalar_search_rmt
+
+
