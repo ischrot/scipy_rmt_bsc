@@ -13,7 +13,7 @@ Functions
 """
 from warnings import warn
 
-from scipy.optimize import minpack2, root_scalar # (IS)
+from scipy.optimize import minpack2 #, root_scalar # (IS)
 from scipy.linalg import norm #(IS)
 from copy import deepcopy #(IS)
 import numpy as np
@@ -1243,8 +1243,6 @@ def scalar_search_rmt(func, x, dx, parameters = None):
             Fx_cache[0] = Fx_new
             if prediction:
                 omega_F[0] = nominator / (denominator**2) #store omega_F for next iteration
-            if back_projection and not ideal_projection:
-                dxbar_cache[0] = dxbar
 
             return nominator / denominator
 

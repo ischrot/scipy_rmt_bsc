@@ -44,7 +44,7 @@ line_search_options = {
     'amin': 1e-12,
     'back_projection': False,
     'ideal_projection': False,
-    'analysis': True,
+    'analysis': False,
     # 'H': 0.01,
     # 'H_lower': 0.8, #0.2,
     'H_lower': lambda H: H * min(.1, H), #0.2,
@@ -67,10 +67,10 @@ jac_options = {
 }
 
 solver_options = {
-    'line_search': 'bsc',
+    'line_search': 'rmt',
     'disp': True,
     'parameters': line_search_options,
-    'jac_options': jac_options,
+#    'jac_options': jac_options,
     'xtol': 1e-3,
     'maxiter': 1000
 }
@@ -90,9 +90,9 @@ solver_options = {
 f = fun
 j =jac
 x0 = [10.0,-10.0]
-#sol = root(f, x0, jac=j, method='exact', options=solver_options)
+sol = root(f, x0, jac=j, method='broyden1', options=solver_options)
 
-param={'line_search' : 'rmt'}
+# param={'line_search' : 'rmt'}
 
 #start = time.time()
 #sol = root(f, x0, jac=j, method='exact', options=solver_options)
@@ -157,6 +157,7 @@ plt.legend(loc=(0.2, 0.75))
 plt.savefig("NLO_picture.pdf")
 plt.show()
 """
+"""
 ###Test-Area###
 
 parameters = ({},{'line_search': 'rmt'},{'line_search': 'rmt_int'},{'line_search': 'bsc'})
@@ -213,6 +214,7 @@ RootTester.test_f_size()
 # optimize.show_options(solver='root',method='broyden1')
 #TODO: Write proper evaluation script.
 #TODO: Test Newton fractal
+"""
 #TODO: Implement A2-condition check as callback fct.(?)
 #TODO: Plitts Hessian init for the approx. Jacobians (?)
 #TODO: Update Changelog.txt

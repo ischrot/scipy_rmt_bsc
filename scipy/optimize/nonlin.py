@@ -337,7 +337,7 @@ def nonlin_solve(F, x0, jacobian='krylov', iter=None, verbose=False,
         if line_search:
             parameters['jac_tol'] = tol #update tol #(IS)
             s, x, Fx, Fx_norm_new = _nonlin_line_search(func, x, Fx, dx,
-                                                        line_search)
+                                                        line_search, smin=smin, options=parameters) #(IS)
         else:
             s = 1.0
             x = x + dx
