@@ -5,6 +5,8 @@ from numpy.testing import (assert_, assert_equal, assert_array_almost_equal,
                            assert_array_almost_equal_nulp, assert_warns,
                            suppress_warnings)
 import scipy.optimize.linesearch as ls
+import scipy.optimize.nonlin as nl #(LS)
+from scipy.linalg import norm
 from scipy.optimize.linesearch import LineSearchWarning
 import numpy as np
 
@@ -34,14 +36,31 @@ def assert_armijo(s, phi, c1=1e-4, err_msg=""):
     assert_(phi1 <= (1 - c1*s)*phi0, msg)
 
 ###(LS)###
-def assert_rmt(s, phi, c1=1e-4, err_msg=""):
+def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
     """
     Check that RMT condition applies
     """
-    phi1 = phi(s)
-    phi0 = phi(0)
-    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (s, phi0, phi1, err_msg)
-    assert_(phi1 <= (1 - c1*s)*phi0, msg)
+    rmt_eta_upper = parameters['rmt_eta_upper']
+    rmt_eta_lower = parameters['rmt_eta_lower']
+    amin = parameters['amin']
+
+    #Step 1: Eval t_dx_omega
+    dxbar = jacobian.solve(
+                Fx_new,
+                tol=jac_tol
+            )
+
+    dx_diff = dxbar + (1 - alpha) * dx # note that dx = - J(x_k)^(-1)F(x_k)
+
+    nominator = 2 * norm(dx_diff)
+    denominator = alpha * norm(dx)
+
+    t_dx_omega = nominator / denominator
+
+    tester = (rmt_eta_lower <= t_dx_omega and t_dx_omega <= rmt_eta_upper) or (rmt_eta_lower > t_dx_omega and alpha == 1.0)
+
+    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (alpha, F0, Fx_new, err_msg)
+    assert_(tester or (alpha<amin), msg)
 ###(LS)###
 
 def assert_line_wolfe(x, p, s, f, fprime, **kw):
@@ -200,11 +219,19 @@ class TestLineSearch(object):
             assert_armijo(s, phi, err_msg="%s %g" % (name, old_phi0))
 
     ###(LS)###
+    
     def test_scalar_search_rmt(self):
-        for name, phi, derphi, old_phi0 in self.scalar_iter():
-            s, phi1 = ls.scalar_search_rmt(phi, phi(0), derphi(0))
-            assert_fp_equal(phi1, phi(s), name)
-            assert_armijo(s, phi, err_msg="%s %g" % (name, old_phi0))
+        for name, p, dp, x in self.scalar_iter():
+            jac = lambda x: dp(x)
+            x0 = nl._as_inexact(x)
+            func = lambda z: nl._as_inexact(p(_array_like(z, x0))).flatten()
+            x = x0.flatten()
+            jacobian = nl.asjacobian(jac)
+            jacobian.setup(x.copy(), p(x), func)
+            options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(p(x))), 'amin':1e-8, 'rmt_eta_upper': 1.2, 'rmt_eta_lower': 0.8}
+            s, dxbar, p_new = ls.scalar_search_rmt(p, x, dp(x), parameters=options)
+            assert_fp_equal(p_new, x+s*dp(x), name)
+            assert_rmt(s, dp(x), p(x), p_new, jacobian, options, err_msg="%s %g" % name)
     ###(LS)###
     
     # -- Generic line searches

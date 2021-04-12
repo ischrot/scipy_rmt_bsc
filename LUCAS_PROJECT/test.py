@@ -1,6 +1,6 @@
 from scipy.optimize import root, show_options, rosen_der
 from scipy.optimize.tests import test_nonlin, test_linesearch, test__root
-# import scipy as sp
+import scipy as sp
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -90,7 +90,7 @@ solver_options = {
 f = fun
 j =jac
 x0 = [10.0,-10.0]
-sol = root(f, x0, jac=j, method='broyden1', options=solver_options)
+#sol = root(f, x0, jac=j, method='broyden1', options=solver_options)
 
 # param={'line_search' : 'rmt'}
 
@@ -198,12 +198,12 @@ RootTester.test_tol_parameter()
 #The following two don't use 'exact' method but are stil used to garantee general functionality
 RootTester.test_minimize_scalar_coerce_args_param()
 RootTester.test_f_size()
-
+"""
 #test_linesearch
-#LSTest = test_linesearch.TestLineSearch()
-#LSTest.setup_method()
+LSTest = test_linesearch.TestLineSearch()
+LSTest.setup_method()
 
-#LSTest.test_scalar_search_rmt()
+LSTest.test_scalar_search_rmt()
 
 
 
@@ -214,7 +214,8 @@ RootTester.test_f_size()
 # optimize.show_options(solver='root',method='broyden1')
 #TODO: Write proper evaluation script.
 #TODO: Test Newton fractal
-"""
+
+#print(sp.__version__)
 #TODO: Implement A2-condition check as callback fct.(?)
 #TODO: Plitts Hessian init for the approx. Jacobians (?)
 #TODO: Update Changelog.txt
