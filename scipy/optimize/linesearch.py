@@ -13,7 +13,8 @@ Functions
 """
 from warnings import warn
 
-from scipy.optimize import minpack2 #, root_scalar # (IS)
+from scipy.optimize import minpack2 #, root_scalar # (IS) 
+from scipy import optimize #(LS)
 from scipy.linalg import norm #(IS)
 from copy import deepcopy #(IS)
 import numpy as np
@@ -1338,7 +1339,7 @@ def scalar_search_rmt(func, x, dx, parameters = None):
     ###################################################################
     # call brentq procedure:
     ###################################################################
-    result = root_scalar(rmt_fct, args=(omega_F, predicted_t_dx_omega, dxbar_cache, Fx_cache),
+    result = optimize.root_scalar(rmt_fct, args=(omega_F, predicted_t_dx_omega, dxbar_cache, Fx_cache),
                          method='brentq', bracket=bracket, xtol=astall)
 
     ###################################################################
