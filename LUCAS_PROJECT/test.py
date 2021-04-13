@@ -1,4 +1,5 @@
-from scipy.optimize import root, show_options, rosen_der
+#from scipy.optimize import root, show_options, rosen_der
+from scipy import optimize
 from scipy.optimize.tests import test_nonlin, test_linesearch, test__root
 import scipy as sp
 
@@ -14,7 +15,7 @@ import time
 # probs = pycutest.find_problems(constraints='U')
 # print(len(probs))
 
-
+## R^2->R^2
 def fun(x):
     return [x[0] + 0.5 * (x[0] - x[1]) ** 3 - 1.0,
             0.5 * (x[1] - x[0]) ** 3 + x[1]]
@@ -24,10 +25,18 @@ def jac(x):
                      [-1.5 * (x[1] - x[0]) ** 2,
                      1 + 1.5 * (x[1] - x[0]) ** 2]])
 
+##scalar function R->R
 def fun2(x):
     return x[0]**3-np.cos(x[0])*np.sin(x[0])**2
 def jac2(x):
     return np.sin(x[0])**3 - 2*np.cos(x[0])**2 *np.sin(x[0])+3*x**2
+
+##R^n->R
+def line_func(x):
+    return np.dot(x, x)
+def line_jac(x):
+    return 2*x
+
 
 def fun_jac(x):
    return fun(x), jac(x)
@@ -67,7 +76,7 @@ jac_options = {
 }
 
 solver_options = {
-    'line_search': 'rmt',
+    'line_search': 'bsc',
     'disp': True,
     'parameters': line_search_options,
 #    'jac_options': jac_options,
@@ -88,9 +97,9 @@ solver_options = {
 
 # x = x0
 f = fun
-j =jac
+j = jac
 x0 = [10.0,-10.0]
-#sol = root(f, x0, jac=j, method='broyden1', options=solver_options)
+#sol = optimize.root(f, x0, jac=j, method='broyden1', options=solver_options)
 
 # param={'line_search' : 'rmt'}
 
@@ -203,7 +212,8 @@ RootTester.test_f_size()
 LSTest = test_linesearch.TestLineSearch()
 LSTest.setup_method()
 
-LSTest.test_scalar_search_rmt()
+#LSTest.test_line_search_rmt()
+LSTest.test_line_search_bsc()
 
 
 

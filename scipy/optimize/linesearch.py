@@ -1564,7 +1564,7 @@ def scalar_search_bsc(func, x, dx, Fx, parameters = None):
     ###################################################################
     # call brentq procedure:
     ###################################################################
-    result = root_scalar(bsc_fct, args=(H_prime_container, predicted_H_prime, Fx_cache),
+    result = optimize.root_scalar(bsc_fct, args=(H_prime_container, predicted_H_prime, Fx_cache),
                          method='brentq', bracket=bracket, xtol=astall)
 
     ###################################################################

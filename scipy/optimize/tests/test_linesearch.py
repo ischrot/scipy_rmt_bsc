@@ -40,6 +40,9 @@ def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
     """
     Check that RMT condition applies
     """
+
+
+    parameters = ls.prepare_parameters('rmt',param,jacobian,dx)
     rmt_eta_upper = parameters['rmt_eta_upper']
     rmt_eta_lower = parameters['rmt_eta_lower']
     amin = parameters['amin']
@@ -60,6 +63,33 @@ def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
     tester = (rmt_eta_lower <= t_dx_omega and t_dx_omega <= rmt_eta_upper) or (rmt_eta_lower > t_dx_omega and alpha == 1.0)
 
     msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (alpha, F0, Fx_new, err_msg)
+    assert_(tester or (alpha<amin), msg)
+
+
+def assert_bsc(alpha, x, dx, func, old_jacobian, param, err_msg):
+    parameters = ls.prepare_parameters('bsc',param, old_jacobian, dx)
+    H_lower = parameters['H_lower']
+    H_upper = parameters['H_upper']
+    amin = parameters['amin']
+
+    x_new = x + alpha * dx
+    Fx_new = func(x_new)
+    jacobian = deepcopy(old_jacobian)
+    jacobian.update(
+        x_new.copy(),
+        Fx_new
+    )
+    dx_next_it = -jacobian.solve(
+        Fx_new,
+        tol=jac_tol
+    )
+    dx_diff = dx_next_it - dx
+    H_prime = alpha * norm(dx_diff)
+
+    tester = (H_lower <= H_prime and H_prime <= H_upper) or (H_lower > H_prime and alpha >= 1.0)
+
+    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (alpha, F0, Fx_new, err_msg)
+
     assert_(tester or (alpha<amin), msg)
 ###(LS)###
 
@@ -219,19 +249,40 @@ class TestLineSearch(object):
             assert_armijo(s, phi, err_msg="%s %g" % (name, old_phi0))
 
     ###(LS)###
-    
-    def test_scalar_search_rmt(self):
-        for name, p, dp, x in self.scalar_iter():
-            jac = lambda x: dp(x)
+    ##RMT not usefull for scalar functions, thus no need for test_scalar_search_rmt?
+
+    def test_line_search_rmt(self):
+        #There is at least 1 function R^20->R to be tested, but this leads to s=None
+        for name, f, fprime, x, p, old_f in self.line_iter():
+            jac = lambda x: fprime(x)
             x0 = nl._as_inexact(x)
-            func = lambda z: nl._as_inexact(p(_array_like(z, x0))).flatten()
+            func = lambda z: nl._as_inexact(f(nl._array_like(z, x0))).flatten()
             x = x0.flatten()
             jacobian = nl.asjacobian(jac)
-            jacobian.setup(x.copy(), p(x), func)
-            options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(p(x))), 'amin':1e-8, 'rmt_eta_upper': 1.2, 'rmt_eta_lower': 0.8}
-            s, dxbar, p_new = ls.scalar_search_rmt(p, x, dp(x), parameters=options)
-            assert_fp_equal(p_new, x+s*dp(x), name)
-            assert_rmt(s, dp(x), p(x), p_new, jacobian, options, err_msg="%s %g" % name)
+            jacobian.setup(x.copy(), f(x), func)
+            options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(f(x))), 'amin':1e-8}
+            #print("1: ",f(x),np.shape(fprime(x)))
+            s, dxbar, f_new = ls.scalar_search_rmt(f, x, fprime(x), parameters=options)
+            #print("2: ",p_new, s)
+            assert_fp_equal(f_new, x+s*fprime(x), name)
+            assert_rmt(s, fprime(x), f(x), p_new, jacobian, options, err_msg="%s %g" % name)
+
+
+    def test_line_search_bsc(self):
+        #There is at least 1 function R^20->R to be tested, but this leads to s=None
+        for name, f, fprime, x, p, old_f in self.line_iter():
+            jac = lambda x: fprime(x)
+            x0 = nl._as_inexact(x)
+            func = lambda z: nl._as_inexact(f(nl._array_like(z, x0))).flatten()
+            x = x0.flatten()
+            jacobian = nl.asjacobian(jac)
+            jacobian.setup(x.copy(), f(x), func)
+            options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(f(x))), 'amin':1e-8}
+            #print("1: ",f(x),np.shape(dp(x)))
+            s, f_new= ls.scalar_search_bsc(func, x, fprime(x), f(x), parameters=options)
+            #print("2: ",p_new, s)
+            assert_fp_equal(f_new, x+s*fprime(x), name)
+            assert_bsc(s, x, fprime(x), func, jacobian, options, err_msg="%s %g" % name)
     ###(LS)###
     
     # -- Generic line searches
