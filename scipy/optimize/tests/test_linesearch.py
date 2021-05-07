@@ -9,6 +9,7 @@ import scipy.optimize.nonlin as nl #(LS)
 from scipy.linalg import norm
 from scipy.optimize.linesearch import LineSearchWarning
 import numpy as np
+from copy import deepcopy  # (IS)
 
 
 def assert_wolfe(s, phi, derphi, c1=1e-4, c2=0.9, err_msg=""):
@@ -49,8 +50,7 @@ def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
 
     #Step 1: Eval t_dx_omega
     dxbar = jacobian.solve(
-                Fx_new,
-                tol=jac_tol
+                Fx_new
             )
 
     dx_diff = dxbar + (1 - alpha) * dx # note that dx = - J(x_k)^(-1)F(x_k)
@@ -80,15 +80,14 @@ def assert_bsc(alpha, x, dx, func, old_jacobian, param, err_msg):
         Fx_new
     )
     dx_next_it = -jacobian.solve(
-        Fx_new,
-        tol=jac_tol
+        Fx_new
     )
     dx_diff = dx_next_it - dx
     H_prime = alpha * norm(dx_diff)
 
     tester = (H_lower <= H_prime and H_prime <= H_upper) or (H_lower > H_prime and alpha >= 1.0)
 
-    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (alpha, F0, Fx_new, err_msg)
+    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (alpha, func(x), Fx_new, err_msg)
 
     assert_(tester or (alpha<amin), msg)
 ###(LS)###
@@ -265,7 +264,7 @@ class TestLineSearch(object):
             s, dxbar, f_new = ls.scalar_search_rmt(f, x, fprime(x), parameters=options)
             #print("2: ",p_new, s)
             assert_fp_equal(f_new, x+s*fprime(x), name)
-            assert_rmt(s, fprime(x), f(x), p_new, jacobian, options, err_msg="%s %g" % name)
+            assert_rmt(s, fprime(x), f(x), f_new, jacobian, options, err_msg="%s %g" % name)
 
 
     def test_line_search_bsc(self):
