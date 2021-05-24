@@ -1,6 +1,6 @@
 #from scipy.optimize import root, show_options, rosen_der
 from scipy import optimize
-from scipy.optimize.tests import test_nonlin, test_linesearch, test__root
+from scipy.optimize.tests import test_nonlin, test_linesearch, test__root, test_linesearch2
 import scipy as sp
 
 import numpy as np
@@ -209,10 +209,10 @@ RootTester.test_minimize_scalar_coerce_args_param()
 RootTester.test_f_size()
 """
 #test_linesearch
-LSTest = test_linesearch.TestLineSearch()
+LSTest = test_linesearch2.TestLineSearch()
 LSTest.setup_method()
 
-#LSTest.test_line_search_rmt()
+LSTest.test_line_search_rmt()
 LSTest.test_line_search_bsc()
 
 
