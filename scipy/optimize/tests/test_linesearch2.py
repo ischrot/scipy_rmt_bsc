@@ -83,8 +83,8 @@ class TestLineSearch(object):
 
     def _line_func_1(self, x):
         self.fcount += 1
-        f = [x[0] + 0.5 * (x[0] - x[1]) ** 3 - 1.0,
-            0.5 * (x[1] - x[0]) ** 3 + x[1]]
+        f = np.array([x[0] + 0.5 * (x[0] - x[1]) ** 3 - 1.0,
+            0.5 * (x[1] - x[0]) ** 3 + x[1]])
         df = np.array([[1 + 1.5 * (x[0] - x[1]) ** 2,
                        - 1.5 * (x[0] - x[1]) ** 2],
                      [-1.5 * (x[1] - x[0]) ** 2,
@@ -122,11 +122,12 @@ class TestLineSearch(object):
         for name, f, fprime in self.line_funcs:
             k = 0
             while k < 9:
-                x = np.random.randn(self.N)
+                x = [-10.0, 10.0]
+                #x = np.random.randn(2)
                 p = np.random.randn(self.N)
-                if np.dot(p, fprime(x)) >= 0:
+                #if np.dot(p, fprime(x)) >= 0:
                     # always pick a descent direction
-                    continue
+                #    continue
                 k += 1
                 old_fv = float(np.random.randn())
                 yield name, f, fprime, x, p, old_fv
@@ -149,6 +150,8 @@ class TestLineSearch(object):
             #print("1: ",f(x),np.shape(fprime(x)))
             s, dxbar, f_new = ls.scalar_search_rmt(f, x, fprime(x), parameters=options)
             #print("2: ",p_new, s)
+            if s == None:
+                s = 1
             assert_fp_equal(f_new, x+s*fprime(x), name)
             assert_rmt(s, fprime(x), f(x), f_new, jacobian, options, err_msg="%s %g" % name)
 
