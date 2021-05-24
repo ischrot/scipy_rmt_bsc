@@ -78,43 +78,28 @@ def assert_fp_equal(x, y, err_msg="", nulp=50):
 
 
 class TestLineSearch(object):
-    # -- scalar functions; must have dphi(0.) < 0
-    def _scalar_func_1(self, s):
-        self.fcount += 1
-        p = -s - s**3 + s**4
-        dp = -1 - 3*s**2 + 4*s**3
-        return p, dp
 
-    def _scalar_func_2(self, s):
-        self.fcount += 1
-        p = np.exp(-4*s) + s**2
-        dp = -4*np.exp(-4*s) + 2*s
-        return p, dp
-
-    def _scalar_func_3(self, s):
-        self.fcount += 1
-        p = -np.sin(10*s)
-        dp = -10*np.cos(10*s)
-        return p, dp
-
-    # -- n-d functions
+    # -- Test functions
 
     def _line_func_1(self, x):
         self.fcount += 1
-        f = np.dot(x, x)
-        df = 2*x
+        f = [x[0] + 0.5 * (x[0] - x[1]) ** 3 - 1.0,
+            0.5 * (x[1] - x[0]) ** 3 + x[1]]
+        df = np.array([[1 + 1.5 * (x[0] - x[1]) ** 2,
+                       - 1.5 * (x[0] - x[1]) ** 2],
+                     [-1.5 * (x[1] - x[0]) ** 2,
+                     1 + 1.5 * (x[1] - x[0]) ** 2]])
         return f, df
 
-    def _line_func_2(self, x):
-        self.fcount += 1
-        f = np.dot(x, np.dot(self.A, x)) + 1
-        df = np.dot(self.A + self.A.T, x)
-        return f, df
+    #def _line_func_2(self, x):
+    #    self.fcount += 1
+    #    f = np.dot(x, np.dot(self.A, x)) + 1
+    #    df = np.dot(self.A + self.A.T, x)
+    #    return f, df
 
     # --
 
     def setup_method(self):
-        self.scalar_funcs = []
         self.line_funcs = []
         self.N = 20
         self.fcount = 0
@@ -124,11 +109,7 @@ class TestLineSearch(object):
             return lambda *a, **kw: func(*a, **kw)[idx]
 
         for name in sorted(dir(self)):
-            if name.startswith('_scalar_func_'):
-                value = getattr(self, name)
-                self.scalar_funcs.append(
-                    (name, bind_index(value, 0), bind_index(value, 1)))
-            elif name.startswith('_line_func_'):
+            if name.startswith('_line_func_'):
                 value = getattr(self, name)
                 self.line_funcs.append(
                     (name, bind_index(value, 0), bind_index(value, 1)))
@@ -136,10 +117,6 @@ class TestLineSearch(object):
         np.random.seed(1234)
         self.A = np.random.randn(self.N, self.N)
 
-    def scalar_iter(self):
-        for name, phi, derphi in self.scalar_funcs:
-            for old_phi0 in np.random.randn(3):
-                yield name, phi, derphi, old_phi0
 
     def line_iter(self):
         for name, f, fprime in self.line_funcs:
