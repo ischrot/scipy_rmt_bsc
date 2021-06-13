@@ -214,6 +214,7 @@ LSTest.setup_method()
 
 LSTest.test_line_search_rmt()
 LSTest.test_line_search_bsc()
+print("Both methods work as they are supposed")
 
 
 

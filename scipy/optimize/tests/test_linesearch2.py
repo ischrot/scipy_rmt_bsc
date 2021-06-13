@@ -159,6 +159,7 @@ class TestLineSearch(object):
             
             s, dxbar, f_new = ls.scalar_search_rmt(func, x, dx, parameters=options)
             #here stepsize s is often (always??) equal to 1 due to fullfilling rmt_eta_lower > t_dx_omega and alpha == 1.0 (rmt_func)
+            #is this an expected step size or is this wrong?
 
             if s == None:
                 s = 1
@@ -178,8 +179,15 @@ class TestLineSearch(object):
             options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(f(x))), 'amin':1e-8}
             Fx = func(x)
             dx = -jacobian.solve(Fx, tol=options['jac_tol'])
-            #print("1: ",f(x),np.shape(dp(x)))
+
+            ### check with ENM step as for rmt
             s, f_new= ls.scalar_search_bsc(func, x, dx, Fx, parameters=options)
-            #print("2: ",p_new, s)
+            
             assert_fp_equal(f_new, f(x+s*dx), name)
             assert_bsc(s, x, dx, func, jacobian, options, err_msg="%s" % name)
+
+            ### check different descent direction (not ENM)
+            s, f_new= ls.scalar_search_bsc(func, x, p, Fx, parameters=options)
+
+            assert_fp_equal(f_new, f(x+s*p), name)
+            assert_bsc(s, x, p, func, jacobian, options, err_msg="%s" % name)
