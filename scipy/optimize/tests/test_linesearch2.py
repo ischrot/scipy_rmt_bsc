@@ -101,7 +101,7 @@ class TestLineSearch(object):
 
     def setup_method(self):
         self.line_funcs = []
-        self.N = 20
+        self.N = 2
         self.fcount = 0
 
         def bind_index(func, idx):
@@ -122,12 +122,14 @@ class TestLineSearch(object):
         for name, f, fprime in self.line_funcs:
             k = 0
             while k < 9:
-                x = [-10.0, 10.0]
-                #x = np.random.randn(2)
+                #x = [-10.0, 10.0]
+                x = np.random.randn(self.N)
                 p = np.random.randn(self.N)
-                #if np.dot(p, fprime(x)) >= 0:
+                grad = lambda x: [fprime(x)[0,0],fprime(x)[1,1]]
+                
+                if np.dot(p, grad(x)) >= 0:
                     # always pick a descent direction
-                #    continue
+                    continue
                 k += 1
                 old_fv = float(np.random.randn())
                 yield name, f, fprime, x, p, old_fv
@@ -148,7 +150,7 @@ class TestLineSearch(object):
             jacobian.setup(x.copy(), f(x), func)
             options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(f(x))), 'amin':1e-8}
             #print("1: ",f(x),np.shape(fprime(x)))
-            s, dxbar, f_new = ls.scalar_search_rmt(f, x, fprime(x), parameters=options)
+            s, dxbar, f_new = ls.scalar_search_rmt(func, x, p, parameters=options)
             #print("2: ",p_new, s)
             if s == None:
                 s = 1
