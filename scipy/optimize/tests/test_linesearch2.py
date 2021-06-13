@@ -13,7 +13,7 @@ from copy import deepcopy  # (IS)
 
 
 ###(LS)###
-def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
+def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, err_msg=""):
     """
     Check that RMT condition applies
     """
@@ -45,7 +45,8 @@ def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
 
 
 def assert_bsc(alpha, x, dx, func, old_jacobian, param, err_msg):
-    parameters = ls.prepare_parameters('bsc',param, old_jacobian, dx)
+    #parameters = ls.prepare_parameters('bsc',param, old_jacobian, dx)
+    parameters=param
     H_lower = parameters['H_lower']
     H_upper = parameters['H_upper']
     amin = parameters['amin']
@@ -162,7 +163,7 @@ class TestLineSearch(object):
             if s == None:
                 s = 1
             assert_fp_equal(f_new, f(x+s*dx), name)
-            assert_rmt(s, fprime(x), f(x), f_new, jacobian, options, err_msg="%s" % name)
+            assert_rmt(s, dx, f(x), f_new, jacobian, options, err_msg="%s" % name)
 
 
     def test_line_search_bsc(self):
@@ -175,8 +176,10 @@ class TestLineSearch(object):
             jacobian = nl.asjacobian(jac)
             jacobian.setup(x.copy(), f(x), func)
             options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(f(x))), 'amin':1e-8}
+            Fx = func(x)
+            dx = -jacobian.solve(Fx, tol=options['jac_tol'])
             #print("1: ",f(x),np.shape(dp(x)))
-            s, f_new= ls.scalar_search_bsc(func, x, fprime(x), f(x), parameters=options)
+            s, f_new= ls.scalar_search_bsc(func, x, dx, Fx, parameters=options)
             #print("2: ",p_new, s)
-            assert_fp_equal(f_new, x+s*fprime(x), name)
-            assert_bsc(s, x, fprime(x), func, jacobian, options, err_msg="%s %g" % name)
+            assert_fp_equal(f_new, f(x+s*dx), name)
+            assert_bsc(s, x, dx, func, jacobian, options, err_msg="%s" % name)
