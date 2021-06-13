@@ -19,7 +19,9 @@ def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
     """
 
 
-    parameters = ls.prepare_parameters('rmt',param,jacobian,dx)
+    #parameters = ls.prepare_parameters('rmt',param,jacobian,dx)
+    #keep parameters from prepare_parameters in ls
+    parameters = param
     rmt_eta_upper = parameters['rmt_eta_upper']
     rmt_eta_lower = parameters['rmt_eta_lower']
     amin = parameters['amin']
@@ -38,7 +40,7 @@ def assert_rmt(alpha, dx, F0, Fx_new, jacobian, param, c1=1e-4, err_msg=""):
 
     tester = (rmt_eta_lower <= t_dx_omega and t_dx_omega <= rmt_eta_upper) or (rmt_eta_lower > t_dx_omega and alpha == 1.0)
 
-    msg = "s = %s; phi(0) = %s; phi(s) = %s; %s" % (alpha, F0, Fx_new, err_msg)
+    msg = "s = %s; f(x_0) = %s; f(x_0+s*dx) = %s; %s" % (alpha, F0, Fx_new, err_msg)
     assert_(tester or (alpha<amin), msg)
 
 
@@ -149,13 +151,18 @@ class TestLineSearch(object):
             jacobian = nl.asjacobian(jac)
             jacobian.setup(x.copy(), f(x), func)
             options = {'jacobian': jacobian, 'jac_tol': min(1e-03,1e-03*norm(f(x))), 'amin':1e-8}
-            #print("1: ",f(x),np.shape(fprime(x)))
-            s, dxbar, f_new = ls.scalar_search_rmt(func, x, p, parameters=options)
-            #print("2: ",p_new, s)
+
+            ### We need a special search direction otherwise we get problems in calculating omega_F
+            Fx = func(x)
+            dx = -jacobian.solve(Fx, tol=options['jac_tol'])
+            
+            s, dxbar, f_new = ls.scalar_search_rmt(func, x, dx, parameters=options)
+            #here stepsize s is often (always??) equal to 1 due to fullfilling rmt_eta_lower > t_dx_omega and alpha == 1.0 (rmt_func)
+
             if s == None:
                 s = 1
-            assert_fp_equal(f_new, x+s*fprime(x), name)
-            assert_rmt(s, fprime(x), f(x), f_new, jacobian, options, err_msg="%s %g" % name)
+            assert_fp_equal(f_new, f(x+s*dx), name)
+            assert_rmt(s, fprime(x), f(x), f_new, jacobian, options, err_msg="%s" % name)
 
 
     def test_line_search_bsc(self):

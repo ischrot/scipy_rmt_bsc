@@ -76,7 +76,7 @@ jac_options = {
 }
 
 solver_options = {
-    'line_search': 'bsc',
+    'line_search': 'rmt',
     'disp': True,
     'parameters': line_search_options,
 #    'jac_options': jac_options,
