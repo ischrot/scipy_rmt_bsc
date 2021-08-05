@@ -144,6 +144,8 @@ class TestLineSearch(object):
 
     def test_line_search_rmt(self):
         #There is at least 1 function R^20->R to be tested, but this leads to s=None
+        not_full_step = 0
+        counter =0 
         for name, f, fprime, x, p, old_f in self.line_iter():
             jac = lambda x: fprime(x)
             x0 = nl._as_inexact(x)
@@ -157,14 +159,22 @@ class TestLineSearch(object):
             Fx = func(x)
             dx = -jacobian.solve(Fx, tol=options['jac_tol'])
             
-            s, dxbar, f_new = ls.scalar_search_rmt(func, x, dx, parameters=options)
-            #here stepsize s is often (always??) equal to 1 due to fullfilling rmt_eta_lower > t_dx_omega and alpha == 1.0 (rmt_func)
-            #is this an expected step size or is this wrong?
-
-            if s == None:
-                s = 1
-            assert_fp_equal(f_new, f(x+s*dx), name)
-            assert_rmt(s, dx, f(x), f_new, jacobian, options, err_msg="%s" % name)
+            ###Now test different values of rmt_eta
+            tester = [0.5, 0.6, 0.7, 0.8, 0.9, None] #None to test the case without given eta
+            for eta_test in tester:
+                if eta_test != None:
+                    options['rmt_eta'] = eta_test
+                s, dxbar, f_new = ls.scalar_search_rmt(func, x, dx, parameters=options)
+                #here stepsize s is often (always??) equal to 1 due to fullfilling rmt_eta_lower > t_dx_omega and alpha == 1.0 (rmt_func)
+                #is this an expected step size or is this wrong?
+                if s!=1:
+                    not_full_step += 1
+                counter += 1
+                if s == None:
+                    s = 1
+                assert_fp_equal(f_new, f(x+s*dx), name)
+                assert_rmt(s, dx, f(x), f_new, jacobian, options, err_msg="%s" % name)
+        print(f"{not_full_step} of {counter} test steps didn't lead to a full step")
 
 
     def test_line_search_bsc(self):
@@ -191,3 +201,8 @@ class TestLineSearch(object):
 
             assert_fp_equal(f_new, f(x+s*p), name)
             assert_bsc(s, x, p, func, jacobian, options, err_msg="%s" % name)
+
+
+#####TODO
+#Another test of rmt with different rmt_eta <= 1.0 and starting values to get a situation in which
+#rmt won't give back just the full step.
