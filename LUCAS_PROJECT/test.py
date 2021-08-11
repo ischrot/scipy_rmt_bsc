@@ -98,7 +98,7 @@ solver_options = {
 # x = x0
 f = fun
 j = jac
-x0 = [10.0,-10.0]
+#x0 = [0.001,0.005]
 #sol = optimize.root(f, x0, jac=j, method='broyden1', options=solver_options)
 
 # param={'line_search' : 'rmt'}

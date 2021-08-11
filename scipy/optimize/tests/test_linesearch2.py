@@ -206,3 +206,4 @@ class TestLineSearch(object):
 #####TODO
 #Another test of rmt with different rmt_eta <= 1.0 and starting values to get a situation in which
 #rmt won't give back just the full step.
+#Find some new functions that can be tested
